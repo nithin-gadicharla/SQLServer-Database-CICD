@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+artifacts/
+.tools/
+.env
+*.user
+*.bak
+*.trn
+testResults.xml

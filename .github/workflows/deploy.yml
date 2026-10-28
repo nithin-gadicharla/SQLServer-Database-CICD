@@ -1,0 +1,116 @@
+name: database-promote
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful main-branch push CI run ID
+        required: true
+        type: string
+      commit:
+        description: Exact 40-character source commit built by that CI run
+        required: true
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [dev, test, prod]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: database-${{ inputs.environment }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify enablement and trusted CI origin
+        shell: pwsh
+        env:
+          DEPLOYMENTS_ENABLED: ${{ vars.DATABASE_DEPLOYMENTS_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          SOURCE_COMMIT: ${{ inputs.commit }}
+        run: |
+          if ($env:DEPLOYMENTS_ENABLED -ne 'true') { throw 'Configure environments and set DATABASE_DEPLOYMENTS_ENABLED=true first.' }
+          ./scripts/Verify-CiRun.ps1 -RunId $env:CI_RUN_ID -Commit $env:SOURCE_COMMIT
+  plan:
+    needs: verify
+    environment: ${{ inputs.environment }}-plan
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: database-package
+          path: artifacts/package
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+      - name: Generate reviewable plan
+        shell: pwsh
+        env:
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+          TARGET_SERVER: ${{ vars.DB_SERVER }}
+          TARGET_DATABASE: ${{ vars.DB_DATABASE }}
+          REPORT_UPLOAD_ALLOWED: ${{ vars.ALLOW_DEPLOYMENT_REPORT_UPLOAD }}
+          SOURCE_COMMIT: ${{ inputs.commit }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if ($env:REPORT_UPLOAD_ALLOWED -ne 'true') { throw 'Approve report storage by setting ALLOW_DEPLOYMENT_REPORT_UPLOAD=true in the plan environment.' }
+          dotnet tool install Microsoft.SqlPackage --tool-path .tools --version 170.5.96
+          if ($LASTEXITCODE -ne 0) { throw 'SqlPackage install failed' }
+          ./scripts/Deploy-Database.ps1 -Action Plan -PackageDirectory artifacts/package -Environment $env:TARGET_ENVIRONMENT -ExpectedServer $env:TARGET_SERVER -ExpectedDatabase $env:TARGET_DATABASE -ExpectedCommit $env:SOURCE_COMMIT -OutputDirectory artifacts/plan -SqlPackagePath "$PWD/.tools/sqlpackage.exe" -Confirm:$false
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: deployment-plan-${{ inputs.environment }}
+          path: artifacts/plan/
+          if-no-files-found: error
+  publish:
+    needs: [verify, plan]
+    environment: ${{ inputs.environment }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: database-package
+          path: artifacts/package
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: deployment-plan-${{ inputs.environment }}
+          path: artifacts/approved-plan
+      - name: Recheck plan, publish exact DACPAC, and smoke test
+        shell: pwsh
+        env:
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+          TARGET_SERVER: ${{ vars.DB_SERVER }}
+          TARGET_DATABASE: ${{ vars.DB_DATABASE }}
+          SOURCE_COMMIT: ${{ inputs.commit }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet tool install Microsoft.SqlPackage --tool-path .tools --version 170.5.96
+          if ($LASTEXITCODE -ne 0) { throw 'SqlPackage install failed' }
+          ./scripts/Deploy-Database.ps1 -Action Publish -PackageDirectory artifacts/package -Environment $env:TARGET_ENVIRONMENT -ExpectedServer $env:TARGET_SERVER -ExpectedDatabase $env:TARGET_DATABASE -ExpectedCommit $env:SOURCE_COMMIT -OutputDirectory artifacts/published -ApprovedReceipt artifacts/approved-plan/receipt.json -SqlPackagePath "$PWD/.tools/sqlpackage.exe" -Confirm:$false
+          ./scripts/Test-Database.ps1 -SqlFile tests/sql/Smoke.sql
+      - name: Record redacted deployment evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: deployment-receipt-${{ inputs.environment }}
+          path: |
+            artifacts/published/receipt.json
+            artifacts/published/deployment-evidence.json
+          if-no-files-found: error

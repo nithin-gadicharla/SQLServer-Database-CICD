@@ -1,0 +1,96 @@
+name: database-ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester tests/Unit.Tests.ps1 -CI
+      - name: Build DACPAC with MSBuild
+        shell: pwsh
+        run: ./scripts/Build-Database.ps1 -Commit $env:GITHUB_SHA
+      - name: Verify pinned Windows SqlPackage executable
+        shell: pwsh
+        run: |
+          dotnet tool install Microsoft.SqlPackage --tool-path .tools --version 170.5.96
+          if ($LASTEXITCODE -ne 0) { throw 'SqlPackage installation failed' }
+          & ./.tools/sqlpackage.exe /Version
+          if ($LASTEXITCODE -ne 0) { throw 'SqlPackage executable failed' }
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: database-package
+          path: |
+            artifacts/package/ApplicationDb.dacpac
+            artifacts/package/manifest.json
+          if-no-files-found: error
+  integration:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: database-package
+          path: artifacts/package
+      - name: Install pinned SqlPackage
+        run: dotnet tool restore
+      - name: Start disposable SQL Server with validated TLS
+        shell: bash
+        run: |
+          set -euo pipefail
+          password="T!$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "DB_CONNECTION_STRING=Server=localhost,1433;Initial Catalog=DatabaseCiLab;User ID=sa;Password=$password;Encrypt=True;TrustServerCertificate=False;Connect Timeout=30" >> "$GITHUB_ENV"
+          mkdir -p artifacts/tls
+          openssl req -x509 -nodes -newkey rsa:2048 -days 2 -keyout artifacts/tls/server.key -out artifacts/tls/server.crt -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost' -addext 'basicConstraints=critical,CA:TRUE'
+          sudo cp artifacts/tls/server.crt /usr/local/share/ca-certificates/database-ci.crt
+          sudo update-ca-certificates
+          printf '[network]\ntlscert = /var/opt/mssql/tls/server.crt\ntlskey = /var/opt/mssql/tls/server.key\nforceencryption = 1\n' > artifacts/tls/mssql.conf
+          sudo chown -R 10001:0 artifacts/tls
+          sudo chmod 600 artifacts/tls/server.key
+          docker run -d --name database-ci -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$password" -v "$PWD/artifacts/tls:/var/opt/mssql/tls:ro" -v "$PWD/artifacts/tls/mssql.conf:/var/opt/mssql/mssql.conf:ro" mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04@sha256:ea73825f3d88a23c355ac2f9fdc6bd960fec90171c12c572109b36a558f77bb8
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker logs database-ci 2>&1 | grep -q 'SQL Server is now ready for client connections'; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+      - name: Deploy and test database lifecycle
+        shell: pwsh
+        env:
+          DISPOSABLE_DATABASE_LAB: 'true'
+        run: ./tests/Integration.ps1
+      - name: Retain synthetic lab evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: integration-evidence
+          path: artifacts/lab/
+          if-no-files-found: warn
+      - name: Remove disposable lab
+        if: always()
+        run: |
+          docker rm -f database-ci || true
+          sudo rm -rf artifacts/tls
