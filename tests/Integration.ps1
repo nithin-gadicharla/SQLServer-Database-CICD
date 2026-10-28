@@ -19,7 +19,20 @@ $command.CommandText="IF DB_ID(N'DatabaseCiLab') IS NOT NULL THROW 51000, 'Lab d
 try { $connection.Open();[void]$command.ExecuteNonQuery() } finally { $command.Dispose();$connection.Dispose() }
 Deploy-Lab $package 'initial'
 & (Join-Path $root 'scripts/Test-Database.ps1') -SqlFile (Join-Path $root 'tests/sql/SeedExistingData.sql')
-Deploy-Lab $package 'repeat'
+# A receipt for a different target must not authorize publishing, even with a valid DACPAC.
+$badReceipt=Join-Path $root 'artifacts/lab/wrong-target-receipt.json'
+$changed=Get-Content (Join-Path $root 'artifacts/lab/initial-plan/receipt.json') -Raw | ConvertFrom-Json
+$changed.target_sha256='0'*64
+$changed | ConvertTo-Json | Set-Content $badReceipt
+$receiptBlocked=$false
+try {
+    & (Join-Path $root 'scripts/Deploy-Database.ps1') -Action Publish -PackageDirectory $package -Environment dev -ExpectedServer 'localhost,1433' -ExpectedDatabase DatabaseCiLab -ExpectedCommit $commit -OutputDirectory (Join-Path $root 'artifacts/lab/wrong-receipt') -ApprovedReceipt $badReceipt -Confirm:$false
+} catch {
+    if ($_.Exception.Message -notlike 'Approved plan no longer matches:*') { throw }
+    $receiptBlocked=$true
+}
+if (-not $receiptBlocked) { throw 'A changed approval receipt was accepted.' }
+Deploy-Lab $package 'repeat' 
 # Build an additive schema version in an isolated source copy, keeping the original CI artifact unchanged.
 $fixture=Join-Path $root 'artifacts/fixture'
 [void](New-Item $fixture -ItemType Directory -Force)
@@ -41,6 +54,6 @@ $blocked=$false
 try { Deploy-Lab $unsafe 'unsafe' } catch { $blocked=$true }
 if (-not $blocked) { throw 'Unsafe narrowing was not blocked.' }
 & (Join-Path $root 'scripts/Test-Database.ps1') -SqlFile (Join-Path $root 'tests/sql/AssertUpgrade.sql')
-[ordered]@{commit=$commit;initial_publish='passed';repeat_publish='passed';additive_upgrade='passed';data_preserved='passed';unsafe_narrowing='blocked';tls='validated';finished_utc=[datetime]::UtcNow.ToString('o')} |
+[ordered]@{commit=$commit;initial_publish='passed';repeat_publish='passed';additive_upgrade='passed';data_preserved='passed';unsafe_narrowing='blocked';changed_receipt='blocked';tls='validated';finished_utc=[datetime]::UtcNow.ToString('o')} |
     ConvertTo-Json | Set-Content (Join-Path $root 'artifacts/lab/integration-evidence.json')
 Write-Output 'Live database deployment integration tests passed.'

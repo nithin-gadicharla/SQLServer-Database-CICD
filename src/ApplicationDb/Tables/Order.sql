@@ -6,7 +6,7 @@ CREATE TABLE [dbo].[Order]
     [Status] varchar(16) NOT NULL CONSTRAINT [DF_Order_Status] DEFAULT 'Pending',
     CONSTRAINT [FK_Order_Customer] FOREIGN KEY ([CustomerId]) REFERENCES [dbo].[Customer] ([CustomerId]),
     CONSTRAINT [CK_Order_Amount] CHECK ([Amount] > 0),
-    CONSTRAINT [CK_Order_Status] CHECK ([Status] IN ('Pending', 'Paid', 'Cancelled'))
+    CONSTRAINT [CK_Order_Status] CHECK ([Status] = 'Pending' OR [Status] = 'Paid' OR [Status] = 'Cancelled')
 );
 GO
 CREATE INDEX [IX_Order_CustomerId] ON [dbo].[Order] ([CustomerId]) INCLUDE ([Amount], [Status]);
