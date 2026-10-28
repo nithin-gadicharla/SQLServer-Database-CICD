@@ -68,7 +68,7 @@ jobs:
           dotnet tool install Microsoft.SqlPackage --tool-path .tools --version 170.5.96
           if ($LASTEXITCODE -ne 0) { throw 'SqlPackage install failed' }
           ./scripts/Deploy-Database.ps1 -Action Plan -PackageDirectory artifacts/package -Environment $env:TARGET_ENVIRONMENT -ExpectedServer $env:TARGET_SERVER -ExpectedDatabase $env:TARGET_DATABASE -ExpectedCommit $env:SOURCE_COMMIT -OutputDirectory artifacts/plan -SqlPackagePath "$PWD/.tools/sqlpackage.exe" -Confirm:$false
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: deployment-plan-${{ inputs.environment }}
           path: artifacts/plan/
@@ -107,7 +107,7 @@ jobs:
           ./scripts/Deploy-Database.ps1 -Action Publish -PackageDirectory artifacts/package -Environment $env:TARGET_ENVIRONMENT -ExpectedServer $env:TARGET_SERVER -ExpectedDatabase $env:TARGET_DATABASE -ExpectedCommit $env:SOURCE_COMMIT -OutputDirectory artifacts/published -ApprovedReceipt artifacts/approved-plan/receipt.json -SqlPackagePath "$PWD/.tools/sqlpackage.exe" -Confirm:$false
           ./scripts/Test-Database.ps1 -SqlFile tests/sql/Smoke.sql
       - name: Record redacted deployment evidence
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: deployment-receipt-${{ inputs.environment }}
           path: |
