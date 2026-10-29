@@ -1,11 +1,13 @@
 # Validation evidence
 
-Hosted validation is in progress: [run 40790231396](https://github.com/nithin-gadicharla/SQLServer-Database-CICD/actions/runs/40790231396), source commit cc26f47f9d7ae80349946acba05706daafd93294.
+[Hosted run 40791422323](https://github.com/nithin-gadicharla/SQLServer-Database-CICD/actions/runs/40791422323) passed on commit 5f8b9a51d33b3e4dc3f01d9409925583e215c881.
 
-Verified so far: Windows build job succeeded; all 9 Pester unit tests passed; MSBuild compiled ApplicationDb.dacpac; pinned Windows sqlpackage.exe ran successfully; the DACPAC and provenance manifest were uploaded as database-package. The first live job deployed the sample successfully, then the repeat-plan gate correctly blocked constraint drop/recreate churn. The status check expression was changed from IN to explicit OR comparisons; database-option scripting was also disabled. Full lifecycle validation is being rerun without weakening drop/data-loss policy.
+- All 11 Windows Pester tests passed.
+- MSBuild compiled the SQL project into ApplicationDb.dacpac.
+- Pinned Windows sqlpackage.exe 170.5.96 ran successfully.
+- Live SQL Server 2022 tests passed: initial deployment, repeat deployment, stored procedure/view smoke checks, additive upgrade preserving existing rows, modified approval receipt rejection, unsafe column narrowing rejection, and post-failure schema/data checks.
+- Deployment testing used certificate-validated TLS and a disposable Linux SQL Server container. The Windows executable was checked separately; actual user environments were not connected.
 
-Defined coverage: PowerShell syntax; target/TLS guards; artifact tampering and source mismatch; XML report policy and fingerprints; real MSBuild/DACPAC compilation; Windows SqlPackage executable; SQL Server initial deployment; repeat publishing; stored procedure/view smoke assertions; additive upgrade with existing-data preservation; rejected column narrowing; and post-failure schema/data checks.
+Corrections discovered through execution: the original IN status constraint caused drop/recreate churn and was replaced with an equivalent explicit OR expression; no-op SqlPackage reports omit Operations, so the parser now normalizes that shape with a captured regression fixture. Database-option scripting is disabled, physical column order is ignored, and exact database-name case is preserved. Drop/data-loss guards remain enabled.
 
-Unverified until separately executed: actual Dev/Test/Prod endpoints, private runner connectivity, environment reviewer configuration, production permissions, Entra authentication, Azure SQL variants, large-database deployment duration/locking and recovery drills.
-
-The second run (40790747008) confirmed that the revised schema no longer produced constraint churn. Its valid no-change SqlPackage report omitted the Operations element; the parser had incorrectly rejected it. The parser now accepts the observed no-op shape with a regression fixture, requires the DacFx report namespace and Alerts section, and retains destructive-operation/data-loss rejection.
+Unverified: your Dev/Test/Prod endpoints, private runner connectivity, environment reviewer configuration, production permissions, Entra authentication, Azure SQL variants, large-database locking/duration and recovery drills. Configure these using ENVIRONMENT_SETUP.md before enabling promotion.
