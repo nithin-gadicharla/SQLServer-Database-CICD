@@ -9,6 +9,7 @@
     <DropExtendedPropertiesNotInSource>False</DropExtendedPropertiesNotInSource>
     <GenerateSmartDefaults>False</GenerateSmartDefaults>
     <ScriptDatabaseOptions>False</ScriptDatabaseOptions>
+    <IgnoreColumnOrder>True</IgnoreColumnOrder>
     <IgnorePermissions>True</IgnorePermissions>
     <IgnoreRoleMembership>True</IgnoreRoleMembership>
   </PropertyGroup>

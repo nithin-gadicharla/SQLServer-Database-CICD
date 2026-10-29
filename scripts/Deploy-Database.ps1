@@ -30,7 +30,7 @@ $common = @(
     '/p:DropConstraintsNotInSource=False', '/p:DropIndexesNotInSource=False',
     '/p:DropDmlTriggersNotInSource=False', '/p:DropExtendedPropertiesNotInSource=False',
     '/p:GenerateSmartDefaults=False', '/p:IgnorePermissions=True', '/p:IgnoreRoleMembership=True',
-    '/p:ScriptDatabaseOptions=False', '/p:CommandTimeout=120'
+    '/p:ScriptDatabaseOptions=False', '/p:IgnoreColumnOrder=True', '/p:CommandTimeout=120'
 )
 $report = Join-Path $output 'deploy-report.xml'
 Invoke-SqlPackageCommand -SqlPackagePath $SqlPackagePath -Arguments (@('/Action:DeployReport', "/OutputPath:$report") + $common)
