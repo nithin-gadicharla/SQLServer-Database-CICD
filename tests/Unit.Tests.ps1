@@ -40,18 +40,24 @@ Describe 'Artifact verification' {
 Describe 'Plan policy and fingerprints' {
     It 'handles namespaced reports and ignores volatile root attributes' {
         $a=Join-Path $TestDrive 'a.xml';$b=Join-Path $TestDrive 'b.xml'
-        '<DeploymentReport xmlns="urn:test" Generated="one"><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $a
-        '<DeploymentReport xmlns="urn:test" Generated="two"><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $b
+        '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02" Generated="one"><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $a
+        '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02" Generated="two"><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $b
         (Get-PlanFingerprint $a) | Should -Be (Get-PlanFingerprint $b)
     }
-    It 'detects changed operations' {
+    It 'accepts the actual no-op report emitted by SqlPackage' {
+        $fixture=Join-Path $root 'tests/fixtures/SqlPackage-NoOp.xml'
+        $explicit=Join-Path $TestDrive 'explicit-empty.xml'
+        '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts/><Operations/></DeploymentReport>' | Set-Content $explicit
+        (Get-PlanFingerprint $fixture) | Should -Be (Get-PlanFingerprint $explicit)
+    }
+    It 'detects changed operations'  {
         $a=Join-Path $TestDrive 'a.xml';$b=Join-Path $TestDrive 'b.xml'
-        '<DeploymentReport><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $a
-        '<DeploymentReport><Alerts/><Operations><Operation Name="Alter"/></Operations></DeploymentReport>' | Set-Content $b
+        '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts/><Operations><Operation Name="Create"/></Operations></DeploymentReport>' | Set-Content $a
+        '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts/><Operations><Operation Name="Alter"/></Operations></DeploymentReport>' | Set-Content $b
         (Get-PlanFingerprint $a) | Should -Not -Be (Get-PlanFingerprint $b)
     }
     It 'rejects destructive plans and malformed or entity-bearing XML' {
-        foreach ($text in @('<DeploymentReport><Operations><Operation Name="Drop"/></Operations></DeploymentReport>', '<DeploymentReport><Alerts><Alert Name="PossibleDataLoss"/></Alerts><Operations/></DeploymentReport>', '<other/>', '<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><DeploymentReport><Operations>&e;</Operations></DeploymentReport>')) {
+        foreach ($text in @('<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts/><Operations><Operation Name="Drop"/></Operations></DeploymentReport>', '<DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts><Alert Name="PossibleDataLoss"/></Alerts><Operations/></DeploymentReport>', '<other/>', '<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations>&e;</Operations></DeploymentReport>')) {
             $file=Join-Path $TestDrive 'bad.xml';$text | Set-Content $file
             { Get-PlanFingerprint $file } | Should -Throw
         }

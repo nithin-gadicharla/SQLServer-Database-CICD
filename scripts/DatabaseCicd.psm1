@@ -29,9 +29,13 @@ function Get-PlanFingerprint {
     $reader = [System.Xml.XmlReader]::Create((Resolve-Path $ReportPath).Path, $settings)
     $doc = [System.Xml.XmlDocument]::new(); $doc.XmlResolver = $null
     try { $doc.Load($reader) } finally { $reader.Dispose() }
-    if ($doc.DocumentElement.LocalName -ne 'DeploymentReport') { throw 'Invalid SqlPackage report.' }
-    $operations = $doc.SelectNodes("//*[local-name()='Operations']")
-    if ($operations.Count -ne 1) { throw 'Exactly one Operations element is required.' }
+    $namespace='http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02'
+    if ($doc.DocumentElement.LocalName -ne 'DeploymentReport' -or $doc.DocumentElement.NamespaceURI -ne $namespace) { throw 'Invalid SqlPackage report.' }
+    $alerts=$doc.SelectNodes("/*/*[local-name()='Alerts']")
+    $operations=$doc.SelectNodes("//*[local-name()='Operations']")
+    if ($alerts.Count -ne 1 -or $operations.Count -gt 1) { throw 'Invalid report section count.' }
+    # SqlPackage omits Operations entirely for a legitimate no-change report.
+    if ($operations.Count -eq 0) { [void]$doc.DocumentElement.AppendChild($doc.CreateElement('Operations',$namespace)) }
     foreach ($operation in $doc.SelectNodes("//*[local-name()='Operation']")) {
         if ($operation.GetAttribute('Name') -match '^Drop') { throw 'Drop operations are blocked.' }
     }
