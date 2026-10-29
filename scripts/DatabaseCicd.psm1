@@ -18,9 +18,9 @@ function Get-TargetIdentity {
     param([Parameter(Mandatory)][string]$ConnectionString,[Parameter(Mandatory)][string]$ExpectedServer,[Parameter(Mandatory)][string]$ExpectedDatabase)
     $builder = [System.Data.SqlClient.SqlConnectionStringBuilder]::new($ConnectionString)
     if (-not $builder.get_Encrypt() -or $builder.get_TrustServerCertificate()) { throw 'Validated encrypted TLS is required.' }
-    if ($builder.get_DataSource() -ine $ExpectedServer -or $builder.get_InitialCatalog() -ine $ExpectedDatabase) { throw 'Connection target mismatch.' }
+    if ($builder.get_DataSource() -ine $ExpectedServer -or $builder.get_InitialCatalog() -cne $ExpectedDatabase) { throw 'Connection target mismatch.' }
     if ($ExpectedDatabase -in @('master','model','msdb','tempdb') -or [string]::IsNullOrWhiteSpace($ExpectedDatabase)) { throw 'A user database is required.' }
-    return Get-TextSha256 ($ExpectedServer.ToLowerInvariant() + "`n" + $ExpectedDatabase.ToLowerInvariant())
+    return Get-TextSha256 ($ExpectedServer.ToLowerInvariant() + "`n" + $ExpectedDatabase)
 }
 function Get-PlanFingerprint {
     param([Parameter(Mandatory)][string]$ReportPath)

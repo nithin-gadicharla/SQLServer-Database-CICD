@@ -16,7 +16,10 @@ Describe 'Target guard' {
         $hash=Get-TargetIdentity -ConnectionString 'Server=sql01;Database=AppDev;Integrated Security=true;Encrypt=true;TrustServerCertificate=false' -ExpectedServer sql01 -ExpectedDatabase AppDev
         $hash | Should -Match '^[0-9a-f]{64}$'
     }
-    It 'rejects wrong targets, system databases and certificate bypass' {
+    It 'distinguishes database names on case-sensitive SQL Server instances' {
+        { Get-TargetIdentity -ConnectionString 'Server=sql01;Database=AppDev;Encrypt=true' -ExpectedServer sql01 -ExpectedDatabase appdev } | Should -Throw
+    }
+    It 'rejects wrong targets, system databases and certificate bypass'  {
         { Get-TargetIdentity -ConnectionString 'Server=prod;Database=AppDev;Encrypt=true' -ExpectedServer sql01 -ExpectedDatabase AppDev } | Should -Throw
         { Get-TargetIdentity -ConnectionString 'Server=sql01;Database=master;Encrypt=true' -ExpectedServer sql01 -ExpectedDatabase master } | Should -Throw
         { Get-TargetIdentity -ConnectionString 'Server=sql01;Database=AppDev;Encrypt=true;TrustServerCertificate=true' -ExpectedServer sql01 -ExpectedDatabase AppDev } | Should -Throw

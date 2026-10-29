@@ -25,7 +25,7 @@ For each pair configure the **same** target identity:
 | Setting | Type | Purpose |
 | --- | --- | --- |
 | `DB_SERVER` | Environment variable | Expected server endpoint, exactly matching the connection string |
-| `DB_DATABASE` | Environment variable | Expected existing user database |
+| `DB_DATABASE` | Environment variable | Expected existing user database, including exact letter case |
 | `DB_CONNECTION_STRING` | Environment secret | Validated encrypted connection; authentication from your approved mechanism |
 | `ALLOW_DEPLOYMENT_REPORT_UPLOAD` | Variable in `*-plan` | Set `true` only after approving storage of schema reports/scripts as Actions artifacts |
 
