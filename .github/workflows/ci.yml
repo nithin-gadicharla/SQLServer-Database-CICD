@@ -34,7 +34,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'SqlPackage installation failed' }
           & ./.tools/sqlpackage.exe /Version
           if ($LASTEXITCODE -ne 0) { throw 'SqlPackage executable failed' }
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: database-package
           path: |
@@ -84,7 +84,7 @@ jobs:
         run: ./tests/Integration.ps1
       - name: Retain synthetic lab evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: integration-evidence
           path: artifacts/lab/
